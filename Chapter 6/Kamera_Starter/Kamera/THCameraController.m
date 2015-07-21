@@ -46,20 +46,69 @@ NSString *const THThumbnailCreatedNotification = @"THThumbnailCreated";
 - (BOOL)setupSession:(NSError **)error {
 
     // Listing 6.4
-
-    return NO;
+    self.captureSession = [[AVCaptureSession alloc] init];
+    self.captureSession.sessionPreset = AVCaptureSessionPresetHigh;
+    
+    // Set up the default video input
+    AVCaptureDevice* videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+    AVCaptureDeviceInput* cameraDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:error];
+    if (cameraDeviceInput) {
+        if ([self.captureSession canAddInput:cameraDeviceInput]) {
+            [self.captureSession addInput:cameraDeviceInput];
+            self.activeVideoInput = cameraDeviceInput;
+        }
+    }else {
+        return NO;
+    }
+    
+    
+    // Set up the default audio
+    AVCaptureDevice* audioDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+    AVCaptureDeviceInput* audioDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:audioDevice error:error];
+    if (audioDeviceInput) {
+        if ([self.captureSession canAddInput:audioDeviceInput]) {
+            [self.captureSession addInput:audioDeviceInput];
+        }
+    } else {
+        return NO;
+    }
+    
+    // Set up the still image output
+    self.imageOutput = [[AVCaptureStillImageOutput alloc] init];
+    self.imageOutput.outputSettings = @{AVVideoCodecKey:AVVideoCodecJPEG};
+    if ([self.captureSession canAddOutput:self.imageOutput]) {
+        [self.captureSession addOutput:self.imageOutput];
+    }
+    
+    
+    // Set up the movie output
+    self.movieOutput = [[AVCaptureMovieFileOutput alloc] init];
+    if ([self.captureSession canAddOutput:self.movieOutput]) {
+        [self.captureSession addOutput:self.movieOutput];
+    }
+    
+    self.videoQueue = dispatch_queue_create("vn.snapbuck.SnapbuckMobile", NULL);
+    return YES;
 }
 
 - (void)startSession {
 
     // Listing 6.5
-    
+    if (![self.captureSession isRunning]) {
+        dispatch_async(self.videoQueue, ^{
+            [self.captureSession startRunning];
+        });
+    }
 }
 
 - (void)stopSession {
 
     // Listing 6.5
-
+    if ([self.captureSession isRunning]) {
+        dispatch_async(self.videoQueue, ^{
+            [self.captureSession stopRunning];
+        });
+    }
 }
 
 #pragma mark - Device Configuration
@@ -67,7 +116,12 @@ NSString *const THThumbnailCreatedNotification = @"THThumbnailCreated";
 - (AVCaptureDevice *)cameraWithPosition:(AVCaptureDevicePosition)position {
 
     // Listing 6.6
-    
+    NSArray* allDevices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
+    for (AVCaptureDevice* device in allDevices) {
+        if (device.position == position) {
+            return device;
+        }
+    }
     return nil;
 }
 
@@ -75,28 +129,36 @@ NSString *const THThumbnailCreatedNotification = @"THThumbnailCreated";
 
     // Listing 6.6
     
-    return nil;
+    return [self.activeVideoInput device];
 }
 
 - (AVCaptureDevice *)inactiveCamera {
 
     // Listing 6.6
-
-    return nil;
+    AVCaptureDevice* inactiveDevice = nil;
+    if (self.cameraCount > 1) {
+        AVCaptureDevicePosition activePostion = [self.activeVideoInput.device position];
+        if (activePostion == AVCaptureDevicePositionBack) {
+            inactiveDevice = [self cameraWithPosition:AVCaptureDevicePositionFront];
+        } else if (activePostion == AVCaptureDevicePositionFront){
+            inactiveDevice = [self cameraWithPosition:AVCaptureDevicePositionBack];
+        }
+    }
+    return inactiveDevice;
 }
 
 - (BOOL)canSwitchCameras {
 
     // Listing 6.6
     
-    return NO;
+    return (self.cameraCount > 1);
 }
 
 - (NSUInteger)cameraCount {
 
     // Listing 6.6
     
-    return 0;
+    return [[AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo] count];
 }
 
 - (BOOL)switchCameras {
