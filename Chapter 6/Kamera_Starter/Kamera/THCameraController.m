@@ -164,8 +164,30 @@ NSString *const THThumbnailCreatedNotification = @"THThumbnailCreated";
 - (BOOL)switchCameras {
 
     // Listing 6.7
+    if ([self canSwitchCameras] == NO) {
+        return NO;
+    }
     
-    return NO;
+    AVCaptureDevice* deviceToSwitchTo = [self inactiveCamera];
+    NSError* error = nil;
+    AVCaptureDeviceInput* inputToSwitchTo = [AVCaptureDeviceInput deviceInputWithDevice:deviceToSwitchTo error:&error];
+    if (inputToSwitchTo != nil) {
+        [self.captureSession beginConfiguration];
+        [self.captureSession removeInput:self.activeVideoInput];
+        
+        if ([self.captureSession canAddInput:inputToSwitchTo]) {
+            [self.captureSession addInput:inputToSwitchTo];
+            self.activeVideoInput = inputToSwitchTo;
+        }else {
+            [self.captureSession addInput:self.activeVideoInput];
+        }
+        [self.captureSession commitConfiguration];
+    } else {
+        [self.delegate deviceConfigurationFailedWithError:error];
+        return NO;
+    }
+    
+    return YES;
 }
 
 #pragma mark - Focus Methods
