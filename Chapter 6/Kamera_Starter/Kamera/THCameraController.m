@@ -382,28 +382,68 @@ static const NSString* THCameraAdjustingExposureContext;
 - (void)captureStillImage {
 
     // Listing 6.12
+    AVCaptureConnection* videoConnection = [self.imageOutput connectionWithMediaType:AVMediaTypeVideo];
+    if ([videoConnection isVideoOrientationSupported]) {
+        [videoConnection setVideoOrientation:[self currentVideoOrientation]];
+    }
+    [self.imageOutput captureStillImageAsynchronouslyFromConnection:videoConnection
+                                                  completionHandler:^(CMSampleBufferRef imageDataSampleBuffer, NSError *error) {
+                                                      if (imageDataSampleBuffer != NULL) {
+                                                          NSData* imageData = [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageDataSampleBuffer];
+                                                          UIImage* image = [UIImage imageWithData:imageData];
+                                                          [self writeImageToAssetsLibrary:image];
+                                                      } else {
+                                                          NSLog(@"Error: %@", [error localizedDescription]);
+                                                      }
+                                                      
+                                                  }];
 
 }
 
 - (AVCaptureVideoOrientation)currentVideoOrientation {
     
     // Listing 6.12
-    
+    AVCaptureVideoOrientation videoOrientation;
     // Listing 6.13
-    
-    return 0;
+    switch ([[UIDevice currentDevice] orientation]) {
+        case UIDeviceOrientationPortrait:
+            videoOrientation = AVCaptureVideoOrientationPortrait;
+            break;
+        case UIDeviceOrientationPortraitUpsideDown:
+            videoOrientation = AVCaptureVideoOrientationPortraitUpsideDown;
+            break;
+        case UIDeviceOrientationLandscapeLeft:
+            videoOrientation = AVCaptureVideoOrientationLandscapeRight;
+            break;
+        default:
+            videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+            break;
+    }
+    return videoOrientation;
 }
 
 
 - (void)writeImageToAssetsLibrary:(UIImage *)image {
 
     // Listing 6.13
-    
+    ALAssetsLibrary* al = [[ALAssetsLibrary alloc] init];
+    [al writeImageToSavedPhotosAlbum:image.CGImage
+                         orientation:(NSUInteger)image.imageOrientation
+                     completionBlock:^(NSURL *assetURL, NSError *error) {
+                         if (error != nil) {
+                             [self postThumbnailNotifification:image];
+                         } else {
+                             NSString* errorDescription = [error localizedDescription];
+                             NSLog(@"Error occured when saving the image: %@", errorDescription);
+                         }
+                     }];
 }
 
 - (void)postThumbnailNotifification:(UIImage *)image {
 
     // Listing 6.13
+    NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
+    [nc postNotificationName:THThumbnailCreatedNotification object:image];
     
 }
 
