@@ -286,6 +286,30 @@ static const NSString* THCameraAdjustingExposureContext;
 - (void)resetFocusAndExposureModes {
 
     // Listing 6.10
+    AVCaptureDevice* cameraDevice = [self activeCamera];
+    AVCaptureExposureMode exposureMode = AVCaptureExposureModeContinuousAutoExposure;
+    AVCaptureFocusMode focusMode = AVCaptureFocusModeContinuousAutoFocus;
+    BOOL canResetExposure = [cameraDevice isExposurePointOfInterestSupported] && [cameraDevice isExposureModeSupported:exposureMode];
+    BOOL canResetFocus = [cameraDevice isFocusPointOfInterestSupported] && [cameraDevice isFocusModeSupported:focusMode];
+
+    NSError* error = nil;
+    if ([cameraDevice lockForConfiguration:&error]){
+        CGPoint centerPoint = CGPointMake(.5, .5);
+    
+        if (canResetExposure) {
+            [cameraDevice setExposureMode:exposureMode];
+            [cameraDevice setExposurePointOfInterest:centerPoint];
+        }
+        
+        if (canResetFocus) {
+            [cameraDevice setFocusMode:focusMode];
+            [cameraDevice setFocusPointOfInterest:centerPoint];
+        }
+        
+        [cameraDevice unlockForConfiguration];
+    }else{
+        [self.delegate deviceConfigurationFailedWithError:error];
+    }
 
 }
 
@@ -297,19 +321,29 @@ static const NSString* THCameraAdjustingExposureContext;
 
     // Listing 6.11
     
-    return NO;
+    return [[self activeCamera] hasFlash];
 }
 
 - (AVCaptureFlashMode)flashMode {
 
     // Listing 6.11
     
-    return 0;
+    return [[self activeCamera] flashMode];
 }
 
 - (void)setFlashMode:(AVCaptureFlashMode)flashMode {
 
     // Listing 6.11
+    AVCaptureDevice* activeCameraDevice = [self activeCamera];
+    NSError* error = nil;
+    if ([activeCameraDevice lockForConfiguration:&error]) {
+        if ([activeCameraDevice hasFlash] && [activeCameraDevice isFlashModeSupported:flashMode]) {
+            [activeCameraDevice setFlashMode:flashMode];
+        }
+        [activeCameraDevice unlockForConfiguration];
+    } else {
+        [self.delegate deviceConfigurationFailedWithError:error];
+    }
 
 }
 
@@ -317,20 +351,29 @@ static const NSString* THCameraAdjustingExposureContext;
 
     // Listing 6.11
     
-    return NO;
+    return [[self activeCamera] hasTorch];
 }
 
 - (AVCaptureTorchMode)torchMode {
 
     // Listing 6.11
     
-    return 0;
+    return [[self activeCamera] torchMode];
 }
 
 - (void)setTorchMode:(AVCaptureTorchMode)torchMode {
 
     // Listing 6.11
-    
+    AVCaptureDevice* activeCamera = [self activeCamera];
+    if ([activeCamera hasTorch] && [activeCamera isTorchModeSupported:torchMode]) {
+        NSError* error = nil;
+        if ([activeCamera lockForConfiguration:&error]) {
+            [activeCamera setTorchMode:torchMode];
+            [activeCamera unlockForConfiguration];
+        } else {
+            [self.delegate deviceConfigurationFailedWithError:error];
+        }
+    }
 }
 
 
