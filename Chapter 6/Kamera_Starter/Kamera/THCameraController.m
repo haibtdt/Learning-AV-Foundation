@@ -196,12 +196,24 @@ NSString *const THThumbnailCreatedNotification = @"THThumbnailCreated";
     
     // Listing 6.8
     
-    return NO;
+    return [[self activeCamera] isFocusPointOfInterestSupported];
 }
 
 - (void)focusAtPoint:(CGPoint)point {
     
     // Listing 6.8
+    AVCaptureDevice* activeDevice = [self activeCamera];
+    if ([activeDevice isFocusPointOfInterestSupported] && [activeDevice isFocusModeSupported:AVCaptureFocusModeAutoFocus]) {
+        NSError* error = nil;
+        if ([activeDevice lockForConfiguration:&error]) {
+            [activeDevice setFocusMode:AVCaptureFocusModeAutoFocus];
+            [activeDevice setFocusPointOfInterest:point];
+            [activeDevice unlockForConfiguration];
+        } else {
+            [self.delegate deviceConfigurationFailedWithError:error];
+        }
+        
+    }
     
 }
 
@@ -211,12 +223,32 @@ NSString *const THThumbnailCreatedNotification = @"THThumbnailCreated";
  
     // Listing 6.9
     
-    return NO;
+    return [[self activeCamera] isExposurePointOfInterestSupported];
 }
 
+static const NSString* THCameraAdjustingExposureContext;
 - (void)exposeAtPoint:(CGPoint)point {
 
     // Listing 6.9
+    AVCaptureDevice* activeCameraDevice = [self activeCamera];
+    AVCaptureExposureMode exposureMode = AVCaptureExposureModeAutoExpose;
+    if ([activeCameraDevice isExposurePointOfInterestSupported] && [activeCameraDevice isExposureModeSupported:exposureMode]) {
+        NSError* error = nil;
+        if ([activeCameraDevice lockForConfiguration:&error]) {
+            [activeCameraDevice setExposureMode:exposureMode];
+            [activeCameraDevice setExposurePointOfInterest:point];
+            
+            if ([activeCameraDevice isExposureModeSupported:AVCaptureExposureModeLocked]) {
+                [activeCameraDevice addObserver:self
+                                     forKeyPath:@"adjustingExposure"
+                                        options:NSKeyValueObservingOptionNew
+                                        context:&THCameraAdjustingExposureContext];
+            }
+            [activeCameraDevice unlockForConfiguration];
+        }else {
+            [self.delegate deviceConfigurationFailedWithError:error];
+        }
+    }
 
 }
 
@@ -226,6 +258,28 @@ NSString *const THThumbnailCreatedNotification = @"THThumbnailCreated";
                        context:(void *)context {
 
     // Listing 6.9
+    if (context == &THCameraAdjustingExposureContext) {
+        AVCaptureDevice* cameraDevice = (AVCaptureDevice*)object;
+        if ([cameraDevice isExposureModeSupported:AVCaptureExposureModeLocked]) {
+            [object removeObserver:self
+                        forKeyPath:@"adjustingExposure"
+                           context:&THCameraAdjustingExposureContext];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSError* error = nil;
+                if ([cameraDevice lockForConfiguration:&error]) {
+                    [cameraDevice setExposureMode:AVCaptureExposureModeLocked];
+                    [cameraDevice unlockForConfiguration];
+                } else{
+                    [self.delegate deviceConfigurationFailedWithError:error];
+                }
+            });
+        }
+    }else {
+        [super observeValueForKeyPath:keyPath
+                             ofObject:object
+                               change:change
+                              context:context];
+    }
 
 }
 
