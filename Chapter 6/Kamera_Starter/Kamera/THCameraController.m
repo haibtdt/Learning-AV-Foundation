@@ -453,12 +453,34 @@ static const NSString* THCameraAdjustingExposureContext;
 
     // Listing 6.14
     
-    return NO;
+    return [self.movieOutput isRecording];
 }
 
 - (void)startRecording {
 
     // Listing 6.14
+    if([self isRecording] == NO){
+        AVCaptureConnection* captureConnection = [self.movieOutput connectionWithMediaType:AVMediaTypeVideo];
+        if ([captureConnection isVideoOrientationSupported]) {
+            [captureConnection setVideoOrientation:[self currentVideoOrientation]];
+        }
+        if ([captureConnection isVideoStabilizationSupported]) {
+            [captureConnection setEnablesVideoStabilizationWhenAvailable:YES];
+        }
+        AVCaptureDevice* cameraDevice = [self activeCamera];
+        if ([cameraDevice isSmoothAutoFocusSupported]) {
+            NSError* error = nil;
+            if ([cameraDevice lockForConfiguration:&error]) {
+                [cameraDevice setSmoothAutoFocusEnabled:YES];
+                [cameraDevice unlockForConfiguration];
+            } else {
+                [self.delegate deviceConfigurationFailedWithError:error];
+            }
+        }
+        self.outputURL = [self uniqueURL];
+        [self.movieOutput startRecordingToOutputFileURL:self.outputURL
+                                      recordingDelegate:self];
+    }
 
 }
 
@@ -470,13 +492,21 @@ static const NSString* THCameraAdjustingExposureContext;
 
 
     // Listing 6.14
-    
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+    NSString* dirPath = [fileManager temporaryDirectoryWithTemplateString:@"kamera.XXXXXX"];
+    if (dirPath) {
+        NSString* filePath = [dirPath stringByAppendingPathComponent:@"kamera_movie.mov"];
+        return [NSURL fileURLWithPath:filePath];
+    }
     return nil;
 }
 
 - (void)stopRecording {
 
     // Listing 6.14
+    if ([self.movieOutput isRecording]) {
+        [self.movieOutput stopRecording];
+    }
 }
 
 #pragma mark - AVCaptureFileOutputRecordingDelegate
@@ -487,18 +517,45 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
                 error:(NSError *)error {
 
     // Listing 6.15
-
+    if (error == nil) {
+        [self writeVideoToAssetsLibrary:[self.outputURL copy]];
+    } else {
+        [self.delegate mediaCaptureFailedWithError:error];
+    }
+    self.outputURL = nil;
 }
 
 - (void)writeVideoToAssetsLibrary:(NSURL *)videoURL {
 
     // Listing 6.15
-    
+    ALAssetsLibrary* assetsLibrary = [[ALAssetsLibrary alloc] init];
+    if ([assetsLibrary videoAtPathIsCompatibleWithSavedPhotosAlbum:videoURL]) {
+        [assetsLibrary writeVideoAtPathToSavedPhotosAlbum:videoURL
+                                          completionBlock:^(NSURL *assetURL, NSError *error) {
+                                              if (error == nil) {
+                                                  [self generateThumbnailForVideoAtURL:videoURL];
+                                              }else{
+                                                  [self.delegate assetLibraryWriteFailedWithError:error];
+                                              }
+                                          }];
+    }
 }
 
 - (void)generateThumbnailForVideoAtURL:(NSURL *)videoURL {
 
     // Listing 6.15
+    dispatch_async(self.videoQueue, ^{
+        AVAsset* asset = [AVAsset assetWithURL:videoURL];
+        AVAssetImageGenerator* imageGenerator = [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
+        imageGenerator.maximumSize = CGSizeMake(100.0f, 0);
+        imageGenerator.appliesPreferredTrackTransform = YES;
+        CGImageRef imageRef = [imageGenerator copyCGImageAtTime:kCMTimeZero actualTime:NULL error:nil];
+        UIImage* image = [UIImage imageWithCGImage:imageRef];
+        CFRelease(imageRef);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self postThumbnailNotifification:image];
+        });
+    });
     
 }
 
